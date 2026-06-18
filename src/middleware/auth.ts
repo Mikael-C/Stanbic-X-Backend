@@ -69,7 +69,7 @@ export function verifyTOTP(secret: string, token: string): boolean {
     secret,
     encoding: 'base32',
     token,
-    window: 2,
+    window: 4, // Allow ±2 minutes of clock drift
   });
 }
 

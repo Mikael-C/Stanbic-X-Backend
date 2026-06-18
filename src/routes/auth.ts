@@ -252,12 +252,12 @@ router.post('/totp/verify', async (req: AuthRequest, res: Response): Promise<voi
     }
 
     // TOTP verified — now generate and return the JWT
-    const jwt = generateJWT(user.walletAddress, user.id);
+    const jwtToken = generateJWT(user.walletAddress, user.id);
 
     res.status(200).json({
       success: true,
       verified: true,
-      token: jwt,
+      jwt: jwtToken,
     });
   } catch (error: any) {
     console.error('TOTP verify error:', error);
