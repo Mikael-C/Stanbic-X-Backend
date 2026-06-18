@@ -1,0 +1,166 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String    @id @default(uuid())
+  walletAddress       String    @unique @map("wallet_address")
+  sxId                String?   @unique @map("sx_id")
+  totpSecret          String?   @map("totp_secret")
+  deviceId            String?   @map("device_id")
+  totalPredictions    Int       @default(0) @map("total_predictions")
+  correctPredictions  Int       @default(0) @map("correct_predictions")
+  totalVolume         Float     @default(0) @map("total_volume")
+  rewardsEarned       Float     @default(0) @map("rewards_earned")
+  isLocked            Boolean   @default(false) @map("is_locked")
+  lockedUntil         DateTime? @map("locked_until")
+  createdAt           DateTime  @default(now()) @map("created_at")
+
+  committedSubAccounts CommittedSubAccount[]
+  stakes               Stake[]
+  sellerListings       Listing[]            @relation("SellerListings")
+  buyerListings        Listing[]            @relation("BuyerListings")
+  leaderboardSnapshots LeaderboardSnapshot[]
+  jailbreakAttempts    JailbreakAttempt[]
+
+  @@map("users")
+}
+
+model CommittedSubAccount {
+  id                String   @id @default(uuid())
+  userId            String   @map("user_id")
+  subAccountId      String   @unique @map("sub_account_id")
+  principal         Float    @default(0)
+  creationTimestamp DateTime @default(now()) @map("creation_timestamp")
+  maturityDate      DateTime @map("maturity_date")
+  yieldAccrued      Float    @default(0) @map("yield_accrued")
+  status            String   @default("active") // active, matured, withdrawn
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("committed_sub_accounts")
+}
+
+model Market {
+  id              String    @id @default(uuid())
+  marketId        String    @unique @map("market_id")
+  contractAddress String?   @map("contract_address")
+  creator         String
+  question        String
+  endTime         DateTime  @map("end_time")
+  status          String    @default("open") // open, closed, resolved, cancelled
+  yesStakes       Float     @default(0) @map("yes_stakes")
+  noStakes        Float     @default(0) @map("no_stakes")
+  winner          String?   // "Yes" or "No"
+  resolvedAt      DateTime? @map("resolved_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  stakes   Stake[]
+  listings Listing[]
+
+  @@map("markets")
+}
+
+model Stake {
+  id              String    @id @default(uuid())
+  userId          String    @map("user_id")
+  marketId        String    @map("market_id")
+  stakeIdOnchain  String?   @map("stake_id_onchain")
+  outcome         String    // "Yes" or "No"
+  amount          Float
+  oddsAtStake     Float     @map("odds_at_stake")
+  potentialPayout Float     @map("potential_payout")
+  claimed         Boolean   @default(false)
+  claimedAt       DateTime? @map("claimed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  user    User    @relation(fields: [userId], references: [id])
+  market  Market  @relation(fields: [marketId], references: [id])
+  listing Listing?
+
+  @@map("stakes")
+}
+
+model Listing {
+  id               String    @id @default(uuid())
+  listingIdOnchain String?   @map("listing_id_onchain")
+  sellerId         String    @map("seller_id")
+  marketId         String    @map("market_id")
+  stakeId          String    @unique @map("stake_id")
+  price            Float
+  status           String    @default("active") // active, sold, cancelled
+  buyerId          String?   @map("buyer_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
+  cancelledAt      DateTime? @map("cancelled_at")
+  purchasedAt      DateTime? @map("purchased_at")
+
+  seller User   @relation("SellerListings", fields: [sellerId], references: [id])
+  buyer  User?  @relation("BuyerListings", fields: [buyerId], references: [id])
+  market Market @relation(fields: [marketId], references: [id])
+  stake  Stake  @relation(fields: [stakeId], references: [id])
+
+  @@map("listings")
+}
+
+model LeaderboardSnapshot {
+  id              String   @id @default(uuid())
+  userId          String   @map("user_id")
+  walletAddress   String   @map("wallet_address")
+  accuracy        Float    @default(0)
+  volume          Float    @default(0)
+  rankByAccuracy  Int?     @map("rank_by_accuracy")
+  rankByVolume    Int?     @map("rank_by_volume")
+  rewardsEarned   Float    @default(0) @map("rewards_earned")
+  snapshotDate    DateTime @default(now()) @map("snapshot_date")
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("leaderboard_snapshot")
+}
+
+model JailbreakAttempt {
+  id               String   @id @default(uuid())
+  userId           String?  @map("user_id")
+  walletAddress    String   @map("wallet_address")
+  promptSanitized  String   @map("prompt_sanitized")
+  detectedPattern  String   @map("detected_pattern")
+  actionTaken      String   @map("action_taken")
+  timestamp        DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@map("jailbreak_attempts")
+}
+
+model Event {
+  id              String   @id @default(uuid())
+  chainId         Int      @map("chain_id")
+  contractAddress String   @map("contract_address")
+  eventName       String   @map("event_name")
+  blockNumber     Int      @map("block_number")
+  transactionHash String   @map("transaction_hash")
+  logIndex        Int      @map("log_index")
+  eventData       Json     @map("event_data")
+  blockTimestamp  DateTime @map("block_timestamp")
+  processedAt     DateTime @default(now()) @map("processed_at")
+
+  @@map("events")
+}
+
+model SyncStatus {
+  id               String   @id @default(uuid())
+  chainId          Int      @unique @map("chain_id")
+  lastIndexedBlock Int      @default(0) @map("last_indexed_block")
+  lastSyncTime     DateTime @default(now()) @map("last_sync_time")
+  isReorging       Boolean  @default(false) @map("is_reorging")
+
+  @@map("sync_status")
+}
