@@ -26,38 +26,13 @@ function validateAmount(amount: unknown): number | null {
 const mockLedger: Record<string, {
   uncommittedBalance: number;
   transactions: any[];
-  demoSubAccounts: any[];
 }> = {};
 
 const initLedger = (userId: string) => {
   if (!mockLedger[userId]) {
     mockLedger[userId] = {
-      uncommittedBalance: 4050.0,
-      transactions: [
-        { id: '1', type: 'deposit', amount: 5000, timestamp: new Date(Date.now() - 2 * 86400000).toISOString(), status: 'completed', txHash: '0xabc...123' },
-        { id: '2', type: 'yield', amount: 42.5, timestamp: new Date(Date.now() - 3 * 86400000).toISOString(), status: 'completed' },
-        { id: '3', type: 'stake', amount: 250, timestamp: new Date(Date.now() - 4 * 86400000).toISOString(), status: 'completed' },
-        { id: '4', type: 'payout', amount: 487.5, timestamp: new Date(Date.now() - 5 * 86400000).toISOString(), status: 'completed' },
-        { id: '5', type: 'withdraw', amount: 1000, timestamp: new Date(Date.now() - 7 * 86400000).toISOString(), status: 'completed', txHash: '0xdef...456' },
-      ],
-      demoSubAccounts: [
-        {
-          subAccountId: 'CSA-DEMO1',
-          principal: 5000,
-          yieldAccrued: 187.5,
-          status: 'active',
-          createdAt: new Date('2025-01-15T10:00:00Z'),
-          maturityDate: new Date('2025-07-15T10:00:00Z'),
-        },
-        {
-          subAccountId: 'CSA-DEMO2',
-          principal: 3400,
-          yieldAccrued: 154.68,
-          status: 'active',
-          createdAt: new Date('2025-02-20T10:00:00Z'),
-          maturityDate: new Date('2025-08-20T10:00:00Z'),
-        }
-      ]
+      uncommittedBalance: 0,
+      transactions: [],
     };
   }
   return mockLedger[userId];
@@ -253,32 +228,38 @@ const getBalanceHandler = async (req: AuthRequest, res: Response): Promise<void>
 
     const ledger = initLedger(userId);
 
-    // Get all committed sub-accounts
+    // Get all committed sub-accounts from DB
     const dbCommittedAccounts = await prisma.committedSubAccount.findMany({
       where: { userId },
       orderBy: { creationTimestamp: 'desc' },
     });
 
-    const dbCommittedBalances = dbCommittedAccounts.map(acc => ({
-      subAccountId: acc.subAccountId,
-      principal: acc.principal,
-      yieldAccrued: acc.yieldAccrued,
-      maturityDate: acc.maturityDate.toISOString(),
-      status: acc.status,
-      createdAt: acc.creationTimestamp.toISOString(),
-    }));
+    // Calculate yield accrual based on time elapsed (~18% APY = ~0.05%/day)
+    const DAILY_YIELD_RATE = 0.0005; // 0.05% per day
+    const now = Date.now();
 
-    const committedBalances = [
-      ...ledger.demoSubAccounts.map(a => ({
-        subAccountId: a.subAccountId,
-        principal: a.principal,
-        yieldAccrued: a.yieldAccrued,
-        status: a.status,
-        createdAt: a.createdAt.toISOString(),
-        maturityDate: a.maturityDate.toISOString(),
-      })),
-      ...dbCommittedBalances
-    ];
+    const committedBalances = await Promise.all(dbCommittedAccounts.map(async (acc) => {
+      const elapsedMs = now - acc.creationTimestamp.getTime();
+      const elapsedDays = elapsedMs / (1000 * 60 * 60 * 24);
+      const calculatedYield = Math.round(acc.principal * DAILY_YIELD_RATE * elapsedDays * 100) / 100;
+
+      // Update yield in DB if it changed significantly
+      if (Math.abs(calculatedYield - acc.yieldAccrued) > 0.01) {
+        await prisma.committedSubAccount.update({
+          where: { id: acc.id },
+          data: { yieldAccrued: calculatedYield },
+        });
+      }
+
+      return {
+        subAccountId: acc.subAccountId,
+        principal: acc.principal,
+        yieldAccrued: calculatedYield,
+        maturityDate: acc.maturityDate.toISOString(),
+        status: acc.status,
+        createdAt: acc.creationTimestamp.toISOString(),
+      };
+    }));
 
     // Calculate totals
     const totalCommitted = committedBalances.reduce((sum, acc) => sum + acc.principal, 0);
