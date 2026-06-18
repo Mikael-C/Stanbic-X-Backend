@@ -181,13 +181,25 @@ router.post('/login', authRateLimiter, async (req: Request, res: Response): Prom
         },
       });
     } else {
-      // No TOTP — direct login (shouldn't happen normally)
-      const token = generateJWT(user.walletAddress, user.id);
+      // User exists but has no TOTP secret (e.g. created by indexer or reset)
+      // Generate new TOTP secret
+      const totp = generateTOTPSecret(walletLower);
+      const qrCode = await QRCode.toDataURL(totp.otpauthUrl);
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { totpSecret: totp.secret },
+      });
+
       res.status(200).json({
         success: true,
         data: {
-          token,
-          totpRequired: false,
+          token: null,
+          totpRequired: true,
+          walletAddress: user.walletAddress,
+          totpSetup: {
+            qrCode,
+          },
         },
       });
     }
