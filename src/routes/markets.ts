@@ -532,13 +532,19 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
     const { id } = req.params;
     const { winner } = req.body;
 
-    const winnerRaw = typeof winner === 'string' ? winner.trim() : '';
-    const winnerNormalized = winnerRaw.charAt(0).toUpperCase() + winnerRaw.slice(1).toLowerCase();
+    console.log('[RESOLVE DEBUG] req.body:', JSON.stringify(req.body));
+    console.log('[RESOLVE DEBUG] winner raw:', winner, 'type:', typeof winner);
 
-    if (!winnerNormalized || !['Yes', 'No'].includes(winnerNormalized)) {
+    // Accept any case: yes/Yes/YES/no/No/NO
+    const winnerLower = String(winner || '').trim().toLowerCase();
+    const winnerNormalized = winnerLower === 'yes' ? 'Yes' : winnerLower === 'no' ? 'No' : null;
+
+    console.log('[RESOLVE DEBUG] winnerLower:', winnerLower, 'winnerNormalized:', winnerNormalized);
+
+    if (!winnerNormalized) {
       res.status(400).json({
         success: false,
-        error: 'Winner must be "Yes" or "No"',
+        error: `Winner must be "Yes" or "No". Received: "${winner}"`,
       });
       return;
     }
@@ -556,6 +562,8 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
       });
       return;
     }
+
+    console.log('[RESOLVE DEBUG] market found:', market.id, 'status:', market.status);
 
     if (market.status === 'resolved') {
       res.status(400).json({
