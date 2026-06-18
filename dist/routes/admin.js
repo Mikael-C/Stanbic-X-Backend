@@ -17,110 +17,132 @@ router.use(auth_1.adminMiddleware);
  * GET /api/admin/verification
  * Formal verification dashboard data — contract deployment status, verification results.
  */
-router.get('/verification', async (req, res) => {
+router.get('/markets/pending', async (req, res) => {
     try {
-        // Get contract deployment status for all chains
-        const chains = [config_1.config.chains.hoodi, config_1.config.chains.baseSepolia];
-        const contractStatus = await Promise.all(chains.map(async (chain) => {
-            const providerHealth = await (0, blockchain_1.checkProviderHealth)(chain.chainId);
-            return {
-                chain: chain.name,
-                chainId: chain.chainId,
-                providerStatus: providerHealth.healthy ? 'connected' : 'disconnected',
-                currentBlock: providerHealth.blockNumber || null,
-                contracts: {
-                    predictionMarket: {
-                        address: chain.predictionMarketContract || 'Not deployed',
-                        deployed: !!chain.predictionMarketContract,
-                    },
-                    vault: {
-                        address: chain.vaultContract || 'Not deployed',
-                        deployed: !!chain.vaultContract,
-                    },
-                    stablecoin: {
-                        address: chain.stablecoinContract || 'Not deployed',
-                        deployed: !!chain.stablecoinContract,
-                    },
-                },
-            };
-        }));
-        // Get platform statistics for verification
-        const [totalMarkets, resolvedMarkets, totalStakes, totalUsers] = await Promise.all([
-            prisma_1.prisma.market.count(),
-            prisma_1.prisma.market.count({ where: { status: 'resolved' } }),
-            prisma_1.prisma.stake.count(),
-            prisma_1.prisma.user.count(),
-        ]);
-        // Get recent market resolutions for audit trail
-        const recentResolutions = await prisma_1.prisma.market.findMany({
-            where: { status: 'resolved' },
-            orderBy: { resolvedAt: 'desc' },
-            take: 10,
-            select: {
-                marketId: true,
-                question: true,
-                winner: true,
-                resolvedAt: true,
-                yesStakes: true,
-                noStakes: true,
-            },
+        const pendingMarkets = await prisma_1.prisma.market.findMany({
+            where: { status: 'pending' },
+            orderBy: { createdAt: 'desc' },
         });
-        // Get unclaimed payouts
-        const unclaimedStakes = await prisma_1.prisma.stake.count({
-            where: {
-                claimed: false,
-                market: { status: 'resolved' },
-            },
-        });
-        res.status(200).json({
-            success: true,
-            data: {
-                contractStatus,
-                platformMetrics: {
-                    totalMarkets,
-                    resolvedMarkets,
-                    totalStakes,
-                    totalUsers,
-                    unclaimedPayouts: unclaimedStakes,
-                },
-                recentResolutions: recentResolutions.map(r => ({
-                    marketId: r.marketId,
-                    question: r.question,
-                    winner: r.winner,
-                    resolvedAt: r.resolvedAt?.toISOString(),
-                    totalPot: r.yesStakes + r.noStakes,
-                })),
-                verificationChecks: {
-                    feeIntegrity: {
-                        withdrawalFee: `${config_1.config.fees.withdrawalFeePercent}%`,
-                        platformFee: `${config_1.config.fees.platformFeePercent}%`,
-                        status: 'verified',
-                    },
-                    rateLimiting: {
-                        general: `${config_1.config.rateLimit.general.max}/min`,
-                        ai: `${config_1.config.rateLimit.ai.max}/min, ${config_1.config.rateLimit.ai.dailyMax}/day`,
-                        status: 'active',
-                    },
-                    jailbreakProtection: {
-                        patternsLoaded: 12,
-                        lockoutThreshold: '5 attempts in 10 minutes',
-                        lockoutDuration: '30 minutes',
-                        status: 'active',
-                    },
-                },
-                timestamp: new Date().toISOString(),
-            },
-        });
+        res.status(200).json({ success: true, data: pendingMarkets });
     }
     catch (error) {
-        console.error('Verification dashboard error:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Failed to fetch verification data',
-            ...(process.env.NODE_ENV === 'development' && { details: error.message }),
-        });
+        res.status(500).json({ success: false, error: 'Failed to fetch pending markets' });
     }
 });
+/**
+ * GET /api/admin/verification
+router.get('/verification', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Get contract deployment status for all chains
+    const chains = [config.chains.hoodi, config.chains.baseSepolia];
+
+    const contractStatus = await Promise.all(
+      chains.map(async (chain) => {
+        const providerHealth = await checkProviderHealth(chain.chainId);
+
+        return {
+          chain: chain.name,
+          chainId: chain.chainId,
+          providerStatus: providerHealth.healthy ? 'connected' : 'disconnected',
+          currentBlock: providerHealth.blockNumber || null,
+          contracts: {
+            predictionMarket: {
+              address: chain.predictionMarketContract || 'Not deployed',
+              deployed: !!chain.predictionMarketContract,
+            },
+            vault: {
+              address: chain.vaultContract || 'Not deployed',
+              deployed: !!chain.vaultContract,
+            },
+            stablecoin: {
+              address: chain.stablecoinContract || 'Not deployed',
+              deployed: !!chain.stablecoinContract,
+            },
+          },
+        };
+      })
+    );
+
+    // Get platform statistics for verification
+    const [totalMarkets, resolvedMarkets, totalStakes, totalUsers] = await Promise.all([
+      prisma.market.count(),
+      prisma.market.count({ where: { status: 'resolved' } }),
+      prisma.stake.count(),
+      prisma.user.count(),
+    ]);
+
+    // Get recent market resolutions for audit trail
+    const recentResolutions = await prisma.market.findMany({
+      where: { status: 'resolved' },
+      orderBy: { resolvedAt: 'desc' },
+      take: 10,
+      select: {
+        marketId: true,
+        question: true,
+        winner: true,
+        resolvedAt: true,
+        yesStakes: true,
+        noStakes: true,
+      },
+    });
+
+    // Get unclaimed payouts
+    const unclaimedStakes = await prisma.stake.count({
+      where: {
+        claimed: false,
+        market: { status: 'resolved' },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        contractStatus,
+        platformMetrics: {
+          totalMarkets,
+          resolvedMarkets,
+          totalStakes,
+          totalUsers,
+          unclaimedPayouts: unclaimedStakes,
+        },
+        recentResolutions: recentResolutions.map(r => ({
+          marketId: r.marketId,
+          question: r.question,
+          winner: r.winner,
+          resolvedAt: r.resolvedAt?.toISOString(),
+          totalPot: r.yesStakes + r.noStakes,
+        })),
+        verificationChecks: {
+          feeIntegrity: {
+            withdrawalFee: `${config.fees.withdrawalFeePercent}%`,
+            platformFee: `${config.fees.platformFeePercent}%`,
+            status: 'verified',
+          },
+          rateLimiting: {
+            general: `${config.rateLimit.general.max}/min`,
+            ai: `${config.rateLimit.ai.max}/min, ${config.rateLimit.ai.dailyMax}/day`,
+            status: 'active',
+          },
+          jailbreakProtection: {
+            patternsLoaded: 12,
+            lockoutThreshold: '5 attempts in 10 minutes',
+            lockoutDuration: '30 minutes',
+            status: 'active',
+          },
+        },
+        timestamp: new Date().toISOString(),
+      },
+    });
+  } catch (error: any) {
+    console.error('Verification dashboard error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch verification data',
+      ...(process.env.NODE_ENV === 'development' && { details: error.message }),
+    });
+  }
+});
+
 /**
  * GET /api/admin/jailbreak-logs
  * View jailbreak attempt logs with analytics.

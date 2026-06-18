@@ -19,6 +19,20 @@ router.use(adminMiddleware);
  * GET /api/admin/verification
  * Formal verification dashboard data — contract deployment status, verification results.
  */
+router.get('/markets/pending', async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const pendingMarkets = await prisma.market.findMany({
+      where: { status: 'pending' },
+      orderBy: { createdAt: 'desc' },
+    });
+    res.status(200).json({ success: true, data: pendingMarkets });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: 'Failed to fetch pending markets' });
+  }
+});
+
+/**
+ * GET /api/admin/verification
 router.get('/verification', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     // Get contract deployment status for all chains
