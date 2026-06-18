@@ -532,7 +532,10 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
     const { id } = req.params;
     const { winner } = req.body;
 
-    if (!winner || !['Yes', 'No'].includes(winner)) {
+    const winnerRaw = typeof winner === 'string' ? winner.trim() : '';
+    const winnerNormalized = winnerRaw.charAt(0).toUpperCase() + winnerRaw.slice(1).toLowerCase();
+
+    if (!winnerNormalized || !['Yes', 'No'].includes(winnerNormalized)) {
       res.status(400).json({
         success: false,
         error: 'Winner must be "Yes" or "No"',
@@ -568,7 +571,7 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
       where: { id: market.id },
       data: {
         status: 'resolved',
-        winner,
+        winner: winnerNormalized,
         resolvedAt,
       },
     });
@@ -577,7 +580,7 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
     const winningStakes = await prisma.stake.findMany({
       where: {
         marketId: market.id,
-        outcome: winner,
+        outcome: winnerNormalized,
       },
       select: { userId: true },
     });
@@ -593,10 +596,9 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
       });
     }
 
-    // Broadcast resolution
     broadcastMarketResolved(market.marketId, {
       marketId: market.marketId,
-      winner,
+      winner: winnerNormalized,
       resolvedAt: resolvedAt.toISOString(),
     });
 
@@ -604,7 +606,7 @@ router.post('/:id/resolve', authMiddleware, adminMiddleware, async (req: AuthReq
       success: true,
       data: {
         marketId: updatedMarket.marketId,
-        winner,
+        winner: winnerNormalized,
         resolvedAt: resolvedAt.toISOString(),
         status: 'resolved',
       },
