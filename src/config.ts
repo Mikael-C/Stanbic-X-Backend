@@ -16,7 +16,7 @@ export const config = {
   },
 
   cors: {
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+    origin: ['http://localhost:5173', 'http://localhost:3000', 'https://stanbic-x.vercel.app'],
     credentials: true,
   },
 
