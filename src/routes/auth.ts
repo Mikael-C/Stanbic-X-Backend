@@ -330,7 +330,7 @@ router.get('/profile', authMiddleware, async (req: AuthRequest, res: Response): 
     }
 
     // Admin wallets (configurable via env)
-    const adminWallets = (process.env.ADMIN_WALLETS || '').toLowerCase().split(',').filter(Boolean);
+    const adminWallets = (process.env.ADMIN_WALLETS || '').split(',').map(w => w.trim().toLowerCase()).filter(Boolean);
     const isAdmin = adminWallets.includes(user.walletAddress.toLowerCase());
 
     res.status(200).json({
